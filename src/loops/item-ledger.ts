@@ -56,6 +56,7 @@ interface PruneOptions {
   maxItems: number;
   retentionMs: number;
   now?: number;
+  keep?: (item: LoopItem) => boolean;
 }
 
 export type TriagePatch = Partial<Pick<LoopItemTriage, "at" | "priority" | "reason" | "groupId">>;
@@ -515,7 +516,8 @@ export function createLoopItemLedger(
     async prune(loopId, options) {
       const now = options.now ?? Date.now();
       const items = await forLoop(loopId);
-      const settled = (item: LoopItem) => isResolved(item) || (item.verdict && item.verdict.state !== "needs_reply");
+      const settled = (item: LoopItem) =>
+        !options.keep?.(item) && (isResolved(item) || (item.verdict && item.verdict.state !== "needs_reply"));
       const expired = items.filter(
         (item) => settled(item) && now - (item.actedAt ?? item.updatedAt) >= options.retentionMs,
       );

@@ -109,7 +109,7 @@ export function createSuggestionItems(deps: SuggestionItemDeps) {
       return {
         activities: open.map(activityOf),
         depth: open.length,
-        batchSize: all.filter((item) => batchAtOf(item) === batchAt && item.actionKind !== SUPERSEDED).length,
+        batchSize: all.filter((item) => batchAtOf(item) === batchAt).length,
         batchAt,
         dismissed: new Set(all.filter((item) => item.actionKind === DISMISSED).map((item) => item.sourceKey)),
       };
@@ -140,11 +140,13 @@ export function createSuggestionItems(deps: SuggestionItemDeps) {
 
     async replaceBatch(loopId: string, activities: SuggestedActivity[], batchAt: number): Promise<void> {
       const incoming = new Set(activities.map((activity) => activity.id));
-      for (const item of await deps.items.byLoop(loopId)) {
-        if (incoming.has(item.sourceKey) && item.actionKind === SUPERSEDED) await deps.items.reopen(item.id);
-        else if (!incoming.has(item.sourceKey) && item.status === "ready")
-          await closeAs(loopId, item.sourceKey, SUPERSEDED);
-      }
+      for (const item of await deps.items.byLoop(loopId))
+        if (!incoming.has(item.sourceKey) && item.status === "ready") await closeAs(loopId, item.sourceKey, SUPERSEDED);
+      await deps.items.prune(loopId, {
+        maxItems: Number.MAX_SAFE_INTEGER,
+        retentionMs: 0,
+        keep: (item) => item.actionKind === DISMISSED,
+      });
       await record(
         loopId,
         activities.map((activity, rank) => ({ ...activity, rank })),

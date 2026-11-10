@@ -148,6 +148,16 @@ test("dismissing past the reserve refills once, supersedes the old batch, and ne
   const result = await f.service.get("alice", [], { poll: true });
   assert.deepEqual(ids(result), ["deck", "memo", "tour", "talk", "wiki"]);
   assert.equal(result.pending, false);
+  const [loop] = await f.loops.list();
+  assert.deepEqual((await f.items.byLoop(loop!.id)).map((item) => `${item.sourceKey}:${item.status}`).toSorted(), [
+    "app:skipped",
+    "brief:skipped",
+    "deck:ready",
+    "memo:ready",
+    "talk:ready",
+    "tour:ready",
+    "wiki:ready",
+  ]);
   f.output(JSON.stringify(batch(["app", "brief", "hire", "plan", "deck"])));
   f.advance(5 * 60 * 60_000);
   await f.service.get("alice", []);
