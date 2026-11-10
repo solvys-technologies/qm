@@ -60,12 +60,18 @@ export function createSuggestedActivityService(deps: {
     await deps.store.update(principalId, ({ dismissed: _dismissed, managedAction: _managedAction, ...value }) => value);
   };
 
-  const claimRefresh = async (principalId: string, gapMs: number, since = 0): Promise<boolean> => {
+  const claimRefresh = async (
+    principalId: string,
+    profile: SuggestedActivityProfile,
+    gapMs: number,
+    since = 0,
+  ): Promise<boolean> => {
     const timestamp = now();
+    const due = (last: number) => last < since || last <= timestamp - gapMs;
+    if (!due(profile.lastRefreshAt ?? 0)) return false;
     let won = false;
     await deps.store.update(principalId, (value) => {
-      const last = value.lastRefreshAt ?? 0;
-      won = last < since || last <= timestamp - gapMs;
+      won = due(value.lastRefreshAt ?? 0);
       return won ? { ...value, lastRefreshAt: timestamp } : value;
     });
     return won;
@@ -111,8 +117,8 @@ export function createSuggestedActivityService(deps: {
         const claimed =
           ((refresh || !poll) &&
             reserveExhausted &&
-            (await claimRefresh(principalId, REFILL_COOLDOWN_MS, batch.batchAt))) ||
-          (batch.batchAt <= now() - STALE_AFTER_MS && (await claimRefresh(principalId, STALE_AFTER_MS)));
+            (await claimRefresh(principalId, profile, REFILL_COOLDOWN_MS, batch.batchAt))) ||
+          (batch.batchAt <= now() - STALE_AFTER_MS && (await claimRefresh(principalId, profile, STALE_AFTER_MS)));
         if (claimed) {
           const result = await deps.scheduler.runNow(cron.id);
           pending = result.started || result.reason === "already_running";
