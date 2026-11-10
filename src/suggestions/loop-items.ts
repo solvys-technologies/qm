@@ -67,8 +67,11 @@ export function createSuggestionItems(deps: SuggestionItemDeps) {
     );
   };
 
-  const dismissedItems = async (loopId: string) =>
-    (await deps.items.byLoop(loopId)).filter((item) => item.actionKind === DISMISSED);
+  const newestDismissed = (items: LoopItem[]) =>
+    items
+      .filter((item) => item.actionKind === DISMISSED)
+      .toSorted((a, b) => (a.actedAt ?? 0) - (b.actedAt ?? 0))
+      .slice(-MAX_DISMISSED);
 
   return {
     async ensureLoop(owner: string): Promise<Loop> {
@@ -124,10 +127,7 @@ export function createSuggestionItems(deps: SuggestionItemDeps) {
     },
 
     async dismissedTitles(loopId: string): Promise<string[]> {
-      return (await dismissedItems(loopId))
-        .toSorted((a, b) => (a.actedAt ?? 0) - (b.actedAt ?? 0))
-        .slice(-MAX_DISMISSED)
-        .map((item) => activityOf(item).title);
+      return newestDismissed(await deps.items.byLoop(loopId)).map((item) => activityOf(item).title);
     },
 
     async importDismissed(loopId: string, entries: Array<{ id: string; title: string }>): Promise<void> {
@@ -139,19 +139,20 @@ export function createSuggestionItems(deps: SuggestionItemDeps) {
     },
 
     async replaceBatch(loopId: string, activities: SuggestedActivity[], batchAt: number): Promise<void> {
-      const incoming = new Set(activities.map((activity) => activity.id));
-      for (const item of await deps.items.byLoop(loopId))
-        if (!incoming.has(item.sourceKey) && item.status === "ready") await closeAs(loopId, item.sourceKey, SUPERSEDED);
-      await deps.items.prune(loopId, {
-        maxItems: Number.MAX_SAFE_INTEGER,
-        retentionMs: 0,
-        keep: (item) => item.actionKind === DISMISSED,
-      });
       await record(
         loopId,
         activities.map((activity, rank) => ({ ...activity, rank })),
         batchAt,
       );
+      const incoming = new Set(activities.map((activity) => activity.id));
+      for (const item of await deps.items.byLoop(loopId))
+        if (!incoming.has(item.sourceKey) && item.status === "ready") await closeAs(loopId, item.sourceKey, SUPERSEDED);
+      const kept = new Set(newestDismissed(await deps.items.byLoop(loopId)).map((item) => item.id));
+      await deps.items.prune(loopId, {
+        maxItems: Number.MAX_SAFE_INTEGER,
+        retentionMs: 0,
+        keep: (item) => kept.has(item.id),
+      });
     },
   };
 }
