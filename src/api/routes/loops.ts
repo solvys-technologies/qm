@@ -1,4 +1,5 @@
 import { LOOP_ICON_ERROR, validLoopIcon } from "../../loops/loop-store.ts";
+import { isSuggestionsLoop } from "../../suggestions/loop-items.ts";
 import { boundLoopCron } from "../../loops/authority.ts";
 import { unattendedGrantRefusal } from "../../cron/authority.ts";
 import { livePersonCapability } from "../artifact-share.ts";
@@ -105,7 +106,7 @@ export async function loadAdministrable(
   const acting = actingPrincipal(ctx);
   if (!acting) return null;
   const loop = await deps.store.get(ctx.params.id ?? "");
-  if (!loop) {
+  if (!loop || isSuggestionsLoop(loop)) {
     sendJson(ctx.res, 404, { error: "not_found", message: "no such loop" });
     return null;
   }
@@ -337,7 +338,7 @@ async function listLoops(ctx: ApiCtx): Promise<void> {
   const all = await deps.store.list();
   const visible: Loop[] = [];
   for (const loop of all) {
-    if (await canAdministerLoop(ctx.app, loop, acting.actorId)) visible.push(loop);
+    if (!isSuggestionsLoop(loop) && (await canAdministerLoop(ctx.app, loop, acting.actorId))) visible.push(loop);
   }
   return sendJson(ctx.res, 200, { loops: visible });
 }

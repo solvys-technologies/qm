@@ -1,4 +1,5 @@
 import type { Loop } from "../../loops/types.ts";
+import { isSuggestionsLoop } from "../../suggestions/loop-items.ts";
 import type { LoopItemSummary } from "../../loops/item-ledger.ts";
 import { ensureDefaultInboxLoops, inboxSource } from "../../loops/inbox-loop.ts";
 import {
@@ -79,7 +80,12 @@ export async function inboxView(ctx: ApiCtx): Promise<InboxView | null> {
   });
   const available: Loop[] = [];
   for (const loop of await deps.store.list()) {
-    if (loop.state !== "archived" && (await canAdministerLoop(ctx.app, loop, acting.actorId))) available.push(loop);
+    if (
+      loop.state !== "archived" &&
+      !isSuggestionsLoop(loop) &&
+      (await canAdministerLoop(ctx.app, loop, acting.actorId))
+    )
+      available.push(loop);
   }
   let ids = Array.isArray(pref.value) ? pref.value.filter((value): value is string => typeof value === "string") : [];
   if (ctx.method === "POST") {

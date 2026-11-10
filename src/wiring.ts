@@ -40,6 +40,7 @@ import { createLoopIngress, type LoopIngressService, type LoopIngress, type Ingr
 import { createGmailPushClient } from "./loops/gmail-push.ts";
 import { createGatewayCatalog } from "./model/gateway-catalog.ts";
 import { createSuggestedActivityService, type SuggestedActivityProfile } from "./suggestions/activities.ts";
+import { createSuggestionItems, createSuggestionsPass } from "./suggestions/loop-items.ts";
 import { createMemoryTidyService, withMemoryTidy, type MemoryTidyProfile } from "./memory/tidy.ts";
 import { createRuntimeService } from "./agent/runtime-control.ts";
 import {
@@ -2677,6 +2678,8 @@ export function buildApp(
       tokens: keychain,
       ...(config.slack?.apiUrl ? { slackApiUrl: config.slack.apiUrl } : {}),
     });
+  const suggestedActivityProfiles = artifactMap<SuggestedActivityProfile>("suggested_activity_profiles");
+  const suggestionItems = createSuggestionItems({ loops: loopStore, items: loopItems, crons });
   const loopFire: LoopFireService = createLoopFireService({
     admittedWork,
     crons,
@@ -2688,6 +2691,12 @@ export function buildApp(
     outputs: loopOutputs,
     grants: loopGrants,
     files,
+    suggestionsPass: createSuggestionsPass({
+      suggestions: suggestionItems,
+      crons,
+      seeds: async (owner) => (await suggestedActivityProfiles.get(owner))?.seeds ?? [],
+      ...(config.suggestedActivitiesContext ? { context: config.suggestedActivitiesContext } : {}),
+    }),
     ...(inboxClients
       ? {
           inboxPass: createInboxPass({
@@ -2748,7 +2757,6 @@ export function buildApp(
   const sweepAsks =
     keychain && askResolution ? createAskExpirySweep({ keychain, fire: askResolution, auditLog }) : undefined;
   let ingressMaintenance: Promise<void> | undefined;
-  const suggestedActivityProfiles = artifactMap<SuggestedActivityProfile>("suggested_activity_profiles");
   const memoryTidy = createMemoryTidyService({
     store: artifactMap<MemoryTidyProfile>("memory_tidy_profiles"),
     memory: baseMemory,
@@ -2788,11 +2796,10 @@ export function buildApp(
   });
   const suggestedActivities = createSuggestedActivityService({
     store: suggestedActivityProfiles,
-    sessions,
+    suggestions: suggestionItems,
     crons,
     scheduler,
     enabled: config.suggestedActivitiesEnabled === true,
-    ...(config.suggestedActivitiesContext ? { context: config.suggestedActivitiesContext } : {}),
   });
   cronChanged.notify = (id) => scheduler.notifyChanged(id);
   orchestratorDeps.control = createControlService(app, scheduler, admin);

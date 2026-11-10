@@ -49,6 +49,7 @@ import type { TriagePatch } from "./item-ledger.ts";
 import { adapterForItem } from "./sources/index.ts";
 import { claimThenBind } from "../tenants/claim.ts";
 import type { InboxPass, InboxPassSummary } from "./verdict/pass.ts";
+import { isSuggestionsLoop, type SuggestionsPass } from "../suggestions/loop-items.ts";
 
 export interface LoopFireDeps {
   admittedWork?: AdmittedWork;
@@ -63,6 +64,7 @@ export interface LoopFireDeps {
   files: Pick<FileArtifactStore, "listOwnedByScopes" | "open">;
   trigger: TriggerDeps;
   inboxPass?: InboxPass;
+  suggestionsPass?: SuggestionsPass;
 }
 
 interface LoopFireResult {
@@ -762,6 +764,23 @@ export function createLoopFireService(deps: LoopFireDeps): LoopFireService {
       await deps.loops.recordFireOutcome(loopId, "ok");
       await applyGovernor(loopId);
       return { status: "silent", note };
+    }
+    if (isSuggestionsLoop(loop)) {
+      if (!isRunnable(loop)) return notRunnable(loop);
+      if (!deps.suggestionsPass) return { status: "failed", note: "suggestions pass is not wired" };
+      const firedAt = Date.now();
+      try {
+        const outcome = await stageTurn(loop, `${fireKey}:intake`, threadRef, await deps.suggestionsPass.prompt(loop));
+        if (!outcome.ran && !outcome.authzFailed) return { status: "silent", note: "duplicate fire key" };
+        const failure = stageFailure("suggestions", outcome);
+        if (failure) throw failure.error;
+        const note = await deps.suggestionsPass.ingest(loop, outcome.reply ?? "", firedAt);
+        await deps.loops.recordFireOutcome(loopId, "ok");
+        return { status: "silent", note };
+      } catch (error) {
+        await deps.loops.recordFireOutcome(loopId, isTransientFailure(error) ? "transient" : "failed");
+        return { status: "failed", note: errMessage(error) };
+      }
     }
     const maxAttempts = loop.caps?.maxItemAttempts ?? DEFAULT_MAX_ATTEMPTS;
     const grants = await deps.grants.byLoop(loopId);
