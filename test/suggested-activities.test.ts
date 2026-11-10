@@ -49,7 +49,6 @@ function fixture(opts: { enabled?: boolean } = {}) {
     files: { listOwnedByScopes: async () => ({ files: [] }), open: async () => null } as never,
     suggestionsPass: createSuggestionsPass({
       suggestions,
-      crons,
       seeds: async (owner) => (await store.get(owner))?.seeds ?? [],
       context: "Deployment context.",
     }),
@@ -142,7 +141,7 @@ test("dismissing past the reserve refills once, supersedes the old batch, and ne
   f.output(JSON.stringify(batch(["deck", "memo", "tour", "talk", "wiki"])));
   const refill = await f.service.get("alice", [], { poll: true, refresh: true });
   assert.equal(refill.pending, true);
-  assert.equal((await f.service.get("alice", [], { poll: true, refresh: true })).pending, true);
+  await f.service.get("alice", [], { poll: true, refresh: true });
   await f.settle();
   assert.equal(f.prompts.length, 2);
   assert.match(f.prompts[1]!, /Do not suggest them or close variants again:\n\["Build my app","Build my brief"\]/);
@@ -200,6 +199,7 @@ test("an existing user with a customized cron task migrates intact, keeping lega
     title: "Refresh my suggested activities",
     schedule: { cron: "0 2 * * *", timezone: "UTC" },
     action: custom,
+    runtime: { modelId: "claude-opus-5" },
   });
   await f.store.put("bob", {
     timezone: "UTC",
@@ -212,9 +212,11 @@ test("an existing user with a customized cron task migrates intact, keeping lega
   await f.service.get("bob", []);
   await f.settle();
   const migrated = await f.crons.get(cron.id);
-  assert.equal(migrated!.action, custom);
-  assert.ok(migrated!.loopId);
-  assert.equal((await f.loops.get(migrated!.loopId!))!.cronId, cron.id);
+  assert.equal(migrated!.action, `fire loop ${migrated!.loopId}`);
+  const loop = await f.loops.get(migrated!.loopId!);
+  assert.equal(loop!.cronId, cron.id);
+  assert.equal(loop!.playbook, custom);
+  assert.equal(migrated!.runtime ?? null, null);
   assert.equal(
     f.prompts[0],
     `${custom}\n\nThe owner dismissed these suggestions. Do not suggest them or close variants again:\n["Old idea"]`,

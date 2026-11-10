@@ -1,4 +1,4 @@
-import { LOOP_ICON_ERROR, validLoopIcon } from "../../loops/loop-store.ts";
+import { LOOP_ICON_ERROR, loopCronAction, validLoopIcon } from "../../loops/loop-store.ts";
 import { isSuggestionsLoop } from "../../suggestions/loop-items.ts";
 import { boundLoopCron } from "../../loops/authority.ts";
 import { unattendedGrantRefusal } from "../../cron/authority.ts";
@@ -315,7 +315,7 @@ async function createLoop(ctx: ApiCtx): Promise<void> {
         ...(loop.botActor ? { botActor: true } : {}),
         schedule,
         title: `Loop: ${loop.name}`,
-        action: `fire loop ${loop.id}`,
+        action: loopCronAction(loop.id),
         loopId: loop.id,
         ownerConsentedAt: Date.now(),
       });

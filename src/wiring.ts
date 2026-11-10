@@ -2693,7 +2693,6 @@ export function buildApp(
     files,
     suggestionsPass: createSuggestionsPass({
       suggestions: suggestionItems,
-      crons,
       seeds: async (owner) => (await suggestedActivityProfiles.get(owner))?.seeds ?? [],
       ...(config.suggestedActivitiesContext ? { context: config.suggestedActivitiesContext } : {}),
     }),

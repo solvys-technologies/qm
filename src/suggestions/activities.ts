@@ -7,7 +7,8 @@ import { scopeId } from "../types.ts";
 import type { Cron } from "../triggers/types.ts";
 import type { Loop } from "../loops/types.ts";
 import { LEGACY_MANAGED_PREFIX } from "./prompt.ts";
-import { GENERATED_COUNT, VISIBLE_COUNT, suggestionsCronAction, type SuggestionItems } from "./loop-items.ts";
+import { GENERATED_COUNT, VISIBLE_COUNT, type SuggestionItems } from "./loop-items.ts";
+import { loopCronAction } from "../loops/loop-store.ts";
 
 export interface SuggestedActivityProfile extends ManagedCronClaim {
   timezone: string;
@@ -51,10 +52,10 @@ export function createSuggestedActivityService(deps: {
     if (cron.loopId === loop.id && loop.cronId === cron.id && !profile.dismissed && !profile.managedAction) return;
     const action = cron.action ?? "";
     const stock =
-      action === suggestionsCronAction(loop.id) ||
+      action === loopCronAction(loop.id) ||
       action === profile.managedAction ||
       action.startsWith(LEGACY_MANAGED_PREFIX);
-    await deps.suggestions.bind(loop, cron, stock);
+    await deps.suggestions.bind(loop, cron, stock ? undefined : action);
     if (profile.dismissed?.length) await deps.suggestions.importDismissed(loop.id, profile.dismissed);
     await deps.store.update(principalId, ({ dismissed: _dismissed, managedAction: _managedAction, ...value }) => value);
   };
@@ -94,16 +95,15 @@ export function createSuggestedActivityService(deps: {
           ownerScopeId: scopeId("personal", principalId),
           title: "Refresh my suggested activities",
           schedule: { cron: nightlyAt(principalId, 2), timezone: profile.timezone },
-          action: suggestionsCronAction(loop.id),
+          action: loopCronAction(loop.id),
           loopId: loop.id,
         });
       }
-      const dismissed = await deps.suggestions.dismissedIds(loop.id);
-      const fallback = seeds.filter((seed) => !dismissed.has(seed.id)).slice(0, GENERATED_COUNT);
       const cron = await deps.crons.get(profile.cronId!);
-      if (!owned(cron, principalId) || cron.archived) return { activities: fallback, pending: false };
-      await migrate(principalId, profile, loop, cron);
+      if (owned(cron, principalId) && !cron.archived) await migrate(principalId, profile, loop, cron);
       const batch = await deps.suggestions.current(loop.id);
+      const fallback = seeds.filter((seed) => !batch.dismissed.has(seed.id)).slice(0, GENERATED_COUNT);
+      if (!owned(cron, principalId) || cron.archived) return { activities: fallback, pending: false };
       const { runs } = await deps.crons.listFires(cron.id, { limit: 10 });
       let pending = runs.some((run) => run.status === "running");
       if (!pending && cron.enabled) {

@@ -84,6 +84,10 @@ function nextFailedFires(previous: number, outcome: FireOutcome): number {
 
 const RUNNABLE_STATES: ReadonlySet<LoopState> = new Set<LoopState>(["enabled"]);
 
+export function loopCronAction(loopId: string): string {
+  return `fire loop ${loopId}`;
+}
+
 export function isRunnable(loop: Loop): boolean {
   return RUNNABLE_STATES.has(loop.state);
 }
