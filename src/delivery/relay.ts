@@ -2,7 +2,7 @@ import type { DeliveryStore } from "./delivery-store.ts";
 import { createSweeper } from "../util/sweeper.ts";
 import { reportFailure } from "../util/errors.ts";
 import type { Delivery } from "../types.ts";
-import { withTenant } from "../tenants/context.ts";
+import { withTenant, type Tenant } from "../tenants/context.ts";
 
 export type Send = (d: Delivery) => Promise<{ refused: string } | void>;
 
@@ -22,7 +22,7 @@ export function createDeliveryRelay(
     inFlight.add(work);
     void work.finally(() => inFlight.delete(work));
   };
-  const deliver = async (d: Delivery): Promise<void> => {
+  const deliver = async (tenant: Tenant, d: Delivery): Promise<void> => {
     let outcome: { refused: string } | void;
     try {
       outcome = await send(d);
@@ -33,7 +33,7 @@ export function createDeliveryRelay(
         e,
         `delivery=${d.id} retry_in=${Math.round(delayMs / 1000)}s`,
       );
-      await deliveries.retryAfter(d.id, delayMs);
+      await deliveries.retryAfter(tenant, d.id, delayMs);
       return;
     }
     if (outcome) await deliveries.fail(d.id, outcome.refused, Date.now());
@@ -47,7 +47,11 @@ export function createDeliveryRelay(
         .claimDue(type, claimMs)
         .then((rows) => {
           for (const d of rows)
-            track(withTenant(d.tenantId, () => deliver(d)).catch((e) => reportFailure(`${type} delivery failed`, e)));
+            track(
+              withTenant(d.tenantId, (tenant) => deliver(tenant, d)).catch((e) =>
+                reportFailure(`${type} delivery failed`, e),
+              ),
+            );
         })
         .catch((e) => reportFailure(`${type} delivery: claim failed`, e)),
     );
