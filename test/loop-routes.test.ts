@@ -926,5 +926,5 @@ test("the per-user suggestions loop is hidden from loop lists and loop routes", 
     (listed.body as { loops: Loop[] }).loops.map((loop) => loop.id),
     [(visible.body as { loop: Loop }).loop.id],
   );
-  assert.equal((await call(deps, "GET", `/v1/loops/${suggestions.id}`)).status, 404);
+  assert.equal((await call(deps, "GET", `/v1/loops/${suggestions.id}`)).status, 403);
 });

@@ -147,11 +147,10 @@ export function createSuggestionItems(deps: SuggestionItemDeps) {
       const incoming = new Set(activities.map((activity) => activity.id));
       for (const item of await deps.items.byLoop(loopId))
         if (!incoming.has(item.sourceKey) && item.status === "ready") await closeAs(loopId, item.sourceKey, SUPERSEDED);
-      const kept = new Set(newestDismissed(await deps.items.byLoop(loopId)).map((item) => item.id));
       await deps.items.prune(loopId, {
         maxItems: Number.MAX_SAFE_INTEGER,
         retentionMs: 0,
-        keep: (item) => kept.has(item.id),
+        keep: (item) => item.actionKind === DISMISSED,
       });
     },
   };

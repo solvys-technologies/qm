@@ -90,6 +90,7 @@ export async function canAdministerLoop(
   loop: Loop,
   actorId: string,
 ): Promise<boolean> {
+  if (isSuggestionsLoop(loop)) return false;
   if (await app.membershipControlsScope(loop.ownerScopeId)) return app.managesScope(actorId, loop.ownerScopeId);
   if (await app.samePerson(loop.owner, actorId)) return true;
   return app.managesScope(actorId, loop.ownerScopeId);
@@ -106,7 +107,7 @@ export async function loadAdministrable(
   const acting = actingPrincipal(ctx);
   if (!acting) return null;
   const loop = await deps.store.get(ctx.params.id ?? "");
-  if (!loop || isSuggestionsLoop(loop)) {
+  if (!loop) {
     sendJson(ctx.res, 404, { error: "not_found", message: "no such loop" });
     return null;
   }
@@ -338,7 +339,7 @@ async function listLoops(ctx: ApiCtx): Promise<void> {
   const all = await deps.store.list();
   const visible: Loop[] = [];
   for (const loop of all) {
-    if (!isSuggestionsLoop(loop) && (await canAdministerLoop(ctx.app, loop, acting.actorId))) visible.push(loop);
+    if (await canAdministerLoop(ctx.app, loop, acting.actorId)) visible.push(loop);
   }
   return sendJson(ctx.res, 200, { loops: visible });
 }

@@ -778,7 +778,11 @@ export function createLoopFireService(deps: LoopFireDeps): LoopFireService {
         await deps.loops.recordFireOutcome(loopId, "ok");
         return { status: "silent", note };
       } catch (error) {
-        await deps.loops.recordFireOutcome(loopId, isTransientFailure(error) ? "transient" : "failed");
+        await deps.loops
+          .recordFireOutcome(loopId, isTransientFailure(error) ? "transient" : "failed")
+          .catch((recordError: unknown) => {
+            throw new AggregateError([error, recordError], `suggestions fire failed: ${errMessage(error)}`);
+          });
         return { status: "failed", note: errMessage(error) };
       }
     }
