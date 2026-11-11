@@ -169,12 +169,13 @@ export async function withdrawCallApprovals(
 
 async function releasedCardsNote(turn: ApprovalDecisionTurn): Promise<string | undefined> {
   const { deps, input, session, actor } = turn;
-  const records = await Promise.all((input.releasedApprovals ?? []).map((id) => deps.approvals.get(id)));
-  const cards = records
-    .filter((record) => record && !approvalRefusal(record, session.id, actor.id))
-    .map((record) => {
-      const id = record!.call ? approvalCardId(record!.approvalKey ?? "") : "";
-      return `- ${id ? `card ${id}: ` : ""}${headSlice(record!.summary ?? record!.command, 2_000)}`;
+  const released = new Set(input.releasedApprovals);
+  const rows = await deps.approvals.selectEntries({ where: { field: "sessionId", anyOfFold: [session.id] } });
+  const cards = rows
+    .filter(([requestId, record]) => released.has(requestId) && !approvalRefusal(record, session.id, actor.id))
+    .map(([, record]) => {
+      const id = record.call ? approvalCardId(record.approvalKey ?? "") : "";
+      return `- ${id ? `card ${id}: ` : ""}${headSlice(record.summary ?? record.command, 2_000)}`;
     });
   if (!cards.length) return undefined;
   return [

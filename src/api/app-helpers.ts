@@ -180,7 +180,7 @@ export function createAppHelpers(deps: AppDeps, app: App) {
   async function pendingApprovalResultForThread(
     threadRef: string,
     viewer?: string,
-    opts: { alwaysBlock?: boolean } = {},
+    opts: { alwaysBlock?: boolean; releaseOwn?: string[] } = {},
   ): Promise<TurnResult | null> {
     const session = await deps.sessions.getByThread(threadRef);
     if (!session) return null;
@@ -188,6 +188,22 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     const all = await pendingApprovalForSession(session.id, { blockingOnly: true });
     if (!all.length) return null;
     const approvals = viewer ? await pendingApprovalForSession(session.id, { blockingOnly: true, viewer }) : all;
+    if (opts.releaseOwn && viewer && deps.approvals && approvals.length === all.length) {
+      await Promise.all(approvals.map(({ requestId }) => deps.approvals!.merge(requestId, { blocksInput: false })));
+      for (const { requestId } of approvals) {
+        opts.releaseOwn.push(requestId);
+        recordAudit({
+          at: Date.now(),
+          principalId: viewer,
+          action: "command_approval.release",
+          resource: requestId,
+          scopeLabel: session.scopeId,
+          status: "ok",
+          detail: JSON.stringify({ sessionId: session.id }),
+        });
+      }
+      return null;
+    }
     if (!approvals.length) {
       return {
         status: "pending_approval",
@@ -201,27 +217,6 @@ export function createAppHelpers(deps: AppDeps, app: App) {
       reason: "Approve or deny the pending command to continue.",
       pendingApprovals: approvals,
     };
-  }
-
-  async function releaseOwnApprovals(threadRef: string, viewer: string): Promise<string[]> {
-    const session = await deps.sessions.getByThread(threadRef);
-    if (!session || !deps.approvals) return [];
-    const all = await pendingApprovalForSession(session.id, { blockingOnly: true });
-    if (!all.length) return [];
-    const own = await pendingApprovalForSession(session.id, { blockingOnly: true, viewer });
-    if (own.length !== all.length) return [];
-    await Promise.all(own.map(({ requestId }) => deps.approvals!.merge(requestId, { blocksInput: false })));
-    for (const { requestId } of own)
-      recordAudit({
-        at: Date.now(),
-        principalId: viewer,
-        action: "command_approval.release",
-        resource: requestId,
-        scopeLabel: session.scopeId,
-        status: "ok",
-        detail: JSON.stringify({ sessionId: session.id }),
-      });
-    return own.map(({ requestId }) => requestId);
   }
 
   async function awaitRun(runId: string): Promise<TurnResult> {
@@ -916,7 +911,6 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     approvalVisibleToViewer,
     pendingApprovalForSession,
     pendingApprovalResultForThread,
-    releaseOwnApprovals,
     awaitRun,
     mayUseSharedScope,
     viewerMayUseRun,
