@@ -180,7 +180,7 @@ export function createAppHelpers(deps: AppDeps, app: App) {
   async function pendingApprovalResultForThread(
     threadRef: string,
     viewer?: string,
-    opts: { alwaysBlock?: boolean } = {},
+    opts: { alwaysBlock?: boolean; passOwn?: boolean } = {},
   ): Promise<TurnResult | null> {
     const session = await deps.sessions.getByThread(threadRef);
     if (!session) return null;
@@ -188,6 +188,7 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     const all = await pendingApprovalForSession(session.id, { blockingOnly: true });
     if (!all.length) return null;
     const approvals = viewer ? await pendingApprovalForSession(session.id, { blockingOnly: true, viewer }) : all;
+    if (opts.passOwn && approvals.length === all.length) return null;
     if (!approvals.length) {
       return {
         status: "pending_approval",

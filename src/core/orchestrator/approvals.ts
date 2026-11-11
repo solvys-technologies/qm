@@ -177,15 +177,14 @@ export async function pendingCardsNote(
     .map(([, record]) => record)
     .filter((record) => !approvalRefusal(record, sessionId, actorId))
     .map((record) => {
-      const asked = record.createdAt ? ` (asked ${new Date(record.createdAt).toISOString()})` : "";
-      const card = record.call && record.approvalKey ? `card ${approvalCardId(record.approvalKey)}: ` : "";
-      return `- ${card}${record.summary ?? record.command}${asked}`;
+      const id = record.call ? approvalCardId(record.approvalKey ?? "") : "";
+      return `- ${id ? `card ${id}: ` : ""}${record.summary ?? record.command}`;
     });
   if (!cards.length) return undefined;
   return [
     "Approval cards from earlier in this conversation are still waiting on this person, who has sent a new message instead of answering them:",
     ...cards,
-    "Approving one later still runs exactly that call. If the new message replaces one or makes it moot, withdraw it with withdraw_approval when it has a card id and say so; otherwise mention briefly that it is waiting on them.",
+    "Approving one later still runs exactly that call. If the new message replaces one or makes it moot, withdraw it with withdraw_approval when it has a card id and say so; otherwise, if you have not already, mention briefly that it is waiting on them.",
   ].join("\n");
 }
 

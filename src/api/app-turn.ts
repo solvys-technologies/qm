@@ -353,33 +353,11 @@ export function createTurnMethods(
           return { status: "refused", reason: "approval isn't visible to you in this project" };
         }
       }
-      const openedByRequester = async (blocked: TurnResult): Promise<boolean> => {
-        if (req.botActor || sessionTurn || !blocked.sessionId) return false;
-        if (!req.approval && !isPersonAuthored(origin.kind)) return false;
-        const [all, own] = await Promise.all([
-          pendingApprovalForSession(blocked.sessionId, { blockingOnly: true }),
-          pendingApprovalForSession(blocked.sessionId, { blockingOnly: true, viewer: actor.id }),
-        ]);
-        if (!own.length || own.length !== all.length || !deps.approvals) return false;
-        if (req.approval) return true;
-        const scopeLabel = (await deps.sessions.get(blocked.sessionId))?.scopeId ?? conversation.threadRef;
-        for (const approval of own) {
-          await deps.approvals.merge(approval.requestId, { blocksInput: false });
-          h.recordAudit({
-            at: Date.now(),
-            principalId: actor.id,
-            action: "command_approval.unseal",
-            resource: approval.requestId,
-            scopeLabel,
-            status: "ok",
-            detail: JSON.stringify({ approvalOutcome: "requester_moved_on", sessionId: blocked.sessionId }),
-          });
-        }
-        return true;
-      };
       const sealedByApproval = async (): Promise<TurnResult | undefined> => {
-        const blocked = await pendingApprovalResultForThread(conversation.threadRef, actor.id, { alwaysBlock: true });
-        if (blocked && (await openedByRequester(blocked))) return undefined;
+        const blocked = await pendingApprovalResultForThread(conversation.threadRef, actor.id, {
+          alwaysBlock: true,
+          passOwn: origin.kind === "human" && !req.approval && !req.botActor && !sessionTurn,
+        });
         if (blocked) {
           const record = req.approval ? await deps.approvals?.get(req.approval.requestId) : undefined;
           const blockedSession = blocked.sessionId ? await deps.sessions.get(blocked.sessionId) : null;
