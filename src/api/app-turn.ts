@@ -360,10 +360,10 @@ export function createTurnMethods(
         }
       }
       const releasedApprovals: string[] = [];
-      const sealedByApproval = async (): Promise<TurnResult | undefined> => {
+      const sealedByApproval = async (passOwn = false): Promise<TurnResult | undefined> => {
         const blocked = await pendingApprovalResultForThread(conversation.threadRef, actor.id, {
           alwaysBlock: true,
-          ...(typedByPerson({ ...req, origin }) && !replay ? { releaseOwn: releasedApprovals } : {}),
+          ...(passOwn && typedByPerson({ ...req, origin }) && !replay ? { passOwn: releasedApprovals } : {}),
         });
         if (blocked) {
           const record = req.approval ? await deps.approvals?.get(req.approval.requestId) : undefined;
@@ -502,7 +502,7 @@ export function createTurnMethods(
           };
         }
       }
-      const sealed = await sealedByApproval();
+      const sealed = await sealedByApproval(true);
       if (sealed) return sealed;
       if (spineRouted) {
         request = { ...input, surfaceTools: true };

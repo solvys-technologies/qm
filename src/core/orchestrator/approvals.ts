@@ -167,16 +167,19 @@ export async function withdrawCallApprovals(
   return { withdrawn };
 }
 
-async function releasedCardsNote(turn: ApprovalDecisionTurn): Promise<string | undefined> {
-  const { deps, input, session, actor } = turn;
+async function releaseCards(turn: ApprovalDecisionTurn): Promise<string | undefined> {
+  const { deps, input, session, actor, audit } = turn;
   const released = new Set(input.releasedApprovals);
   const rows = await deps.approvals.selectEntries({ where: { field: "sessionId", anyOfFold: [session.id] } });
-  const cards = rows
-    .filter(([requestId, record]) => released.has(requestId) && !approvalRefusal(record, session.id, actor.id))
-    .map(([, record]) => {
-      const id = record.call ? approvalCardId(record.approvalKey ?? "") : "";
-      return `- ${id ? `card ${id}: ` : ""}${headSlice(record.summary ?? record.command, 2_000)}`;
-    });
+  const own = rows.filter(
+    ([requestId, record]) => released.has(requestId) && !approvalRefusal(record, session.id, actor.id),
+  );
+  await Promise.all(own.map(([requestId]) => deps.approvals.merge(requestId, { blocksInput: false })));
+  for (const [requestId] of own) audit({ action: "command_approval.release", resource: requestId, status: "ok" });
+  const cards = own.map(([, record]) => {
+    const id = record.call ? approvalCardId(record.approvalKey ?? "") : "";
+    return `- ${id ? `card ${id}: ` : ""}${headSlice(record.summary ?? record.command, 2_000)}`;
+  });
   if (!cards.length) return undefined;
   return [
     "This person sent a new message instead of answering these approval cards from their last request. They no longer hold the conversation but are still waiting:",
@@ -412,7 +415,7 @@ export async function applyTurnApprovals(
   if (earlier?.unstarted.length || recovered) turnEvents.push(APPROVED_CALL_RAN_NOTE);
   if (input.approval && !recovered) return decideApproval(turn, decisions, input.approval);
   if (input.releasedApprovals?.length) {
-    const note = await releasedCardsNote(turn).catch(swallowAs("approvals: released cards note", undefined));
+    const note = await releaseCards(turn).catch(swallowAs("approvals: release cards", undefined));
     if (note) turnEvents.push(note);
   }
   return undefined;

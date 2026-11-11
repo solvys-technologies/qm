@@ -180,7 +180,7 @@ export function createAppHelpers(deps: AppDeps, app: App) {
   async function pendingApprovalResultForThread(
     threadRef: string,
     viewer?: string,
-    opts: { alwaysBlock?: boolean; releaseOwn?: string[] } = {},
+    opts: { alwaysBlock?: boolean; passOwn?: string[] } = {},
   ): Promise<TurnResult | null> {
     const session = await deps.sessions.getByThread(threadRef);
     if (!session) return null;
@@ -188,23 +188,11 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     const all = await pendingApprovalForSession(session.id, { blockingOnly: true });
     if (!all.length) return null;
     const approvals = viewer ? await pendingApprovalForSession(session.id, { blockingOnly: true, viewer }) : all;
-    if (opts.releaseOwn && viewer && deps.approvals && approvals.length === all.length) {
-      await Promise.all(approvals.map(({ requestId }) => deps.approvals!.merge(requestId, { blocksInput: false })));
-      for (const { requestId } of approvals) {
-        opts.releaseOwn.push(requestId);
-        recordAudit({
-          at: Date.now(),
-          principalId: viewer,
-          action: "command_approval.release",
-          resource: requestId,
-          scopeLabel: session.scopeId,
-          status: "ok",
-          detail: JSON.stringify({ sessionId: session.id }),
-        });
-      }
+    if (opts.passOwn && viewer && approvals.length === all.length) {
+      opts.passOwn.push(...approvals.map(({ requestId }) => requestId));
       return null;
     }
-    if (!approvals.length) {
+    if (!approvals.length || opts.passOwn) {
       return {
         status: "pending_approval",
         sessionId: session.id,
