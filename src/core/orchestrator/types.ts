@@ -95,6 +95,7 @@ export interface OrchestratorInput extends Omit<
   shutdown?: AbortSignal;
   park?: TurnPark;
   sessionParticipantIds?: readonly string[];
+  releasedApprovals?: readonly string[];
   scopeVersion?: string;
   swarm?: SwarmTurn;
   swarmGoal?: GoalCreateInput & { assignedAt: number };

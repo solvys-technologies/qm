@@ -2866,7 +2866,12 @@ test("a person's typed message goes through their own unanswered card, which sta
   const next = await app.turn(channel("never mind that, what's the weather?", human));
   assert.equal(next.status, "ok", "the requester's own card never swallows their next message");
   const user = (await sessions.getItems(next.sessionId!)).findLast((item) => item.kind === "UserMessage");
-  assert.match(String(user!.body.environment), /still waiting on them[\s\S]*git push --force origin main/);
+  assert.match(
+    String(user!.body.environment),
+    /instead of answering these approval cards[\s\S]*git push --force origin main/,
+  );
+  const after = await app.turn(channel("anything new?", { ...human, actor: { externalId: "U2" } }));
+  assert.equal(after.status, "ok", "once its owner moves on, the card stops holding the thread for others");
 
   const approved = await app.turn(
     channel("!run git push --force origin main", { approval: { requestId: pending.requestId, approved: true } }),
@@ -2887,7 +2892,7 @@ test("a pending tool card is named by its card id so the model can withdraw it",
   assert.equal((await app.turn(dm(`!withdraw ${cardId}`, human))).reply, "withdrew example_send");
   const after = await app.turn(dm("and now?", human));
   const last = (await sessions.getItems(after.sessionId!)).findLast((item) => item.kind === "UserMessage");
-  assert.doesNotMatch(String(last!.body.environment), /still waiting on them/);
+  assert.doesNotMatch(String(last!.body.environment), /instead of answering these approval cards/);
 });
 
 test("a second click on an already-consumed approval refuses instead of re-running the command", async () => {

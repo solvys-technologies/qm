@@ -79,6 +79,7 @@ export function createTurnMethods(
     approvalVisibleToViewer,
     pendingApprovalForSession,
     pendingApprovalResultForThread,
+    releaseOwnApprovals,
     viewerMayUseRun,
     sessionForViewer,
     replayOrphanedRunSignals,
@@ -359,11 +360,11 @@ export function createTurnMethods(
           return { status: "refused", reason: "approval isn't visible to you in this project" };
         }
       }
+      let releasedApprovals: string[] = [];
       const sealedByApproval = async (): Promise<TurnResult | undefined> => {
-        const blocked = await pendingApprovalResultForThread(conversation.threadRef, actor.id, {
-          alwaysBlock: true,
-          passOwn: typedByPerson({ ...req, origin }),
-        });
+        if (typedByPerson({ ...req, origin }) && !releasedApprovals.length)
+          releasedApprovals = await releaseOwnApprovals(conversation.threadRef, actor.id);
+        const blocked = await pendingApprovalResultForThread(conversation.threadRef, actor.id, { alwaysBlock: true });
         if (blocked) {
           const record = req.approval ? await deps.approvals?.get(req.approval.requestId) : undefined;
           const blockedSession = blocked.sessionId ? await deps.sessions.get(blocked.sessionId) : null;
@@ -517,7 +518,7 @@ export function createTurnMethods(
       const enqueue = () =>
         deps.runs.enqueue({
           sessionId: conversation.threadRef,
-          request,
+          request: releasedApprovals.length ? { ...request, releasedApprovals } : request,
           maxAttempts: deps.maxAttempts,
           ...(dedupKey ? { dedupKey } : {}),
         });
