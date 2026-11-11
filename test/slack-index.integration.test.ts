@@ -1227,6 +1227,24 @@ test("a blocked-thread result without approval details tells only the sender ins
   }
 });
 
+test("a message held by the sender's own pending card tells them so instead of going quiet", async () => {
+  const f = await fixture();
+  try {
+    f.core.result = {
+      status: "pending_approval",
+      sessionId: "S1",
+      reason: "Approve or deny the pending command to continue.",
+      pendingApprovals: [{ requestId: "r1", command: "echo hi", reason: "gate", blocksInput: true }],
+    };
+    await f.app.emitMessage({ channel: "D1", channel_type: "im", user: "U1", text: "anything?", ts: "106.1" });
+    assert.equal(f.core.turns.length, 1);
+    const said = [...f.client.posts, ...f.client.ephemerals].map((m: any) => m.text).join("\n");
+    assert.match(said, /Approve or deny the pending command/);
+  } finally {
+    await f.stop();
+  }
+});
+
 test("a DM thread reply carries its reply thread as a typed Slack source field", async () => {
   const f = await fixture();
   try {
