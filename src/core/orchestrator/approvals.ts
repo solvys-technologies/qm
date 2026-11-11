@@ -167,6 +167,28 @@ export async function withdrawCallApprovals(
   return { withdrawn };
 }
 
+export async function pendingCardsNote(
+  pending: DurableMap<PendingApprovalRecord>,
+  sessionId: string,
+  actorId: string,
+): Promise<string | undefined> {
+  const rows = await pending.selectEntries({ where: { field: "sessionId", anyOfFold: [sessionId] } });
+  const cards = rows
+    .map(([, record]) => record)
+    .filter((record) => !approvalRefusal(record, sessionId, actorId))
+    .map((record) => {
+      const asked = record.createdAt ? ` (asked ${new Date(record.createdAt).toISOString()})` : "";
+      const card = record.call && record.approvalKey ? `card ${approvalCardId(record.approvalKey)}: ` : "";
+      return `- ${card}${record.summary ?? record.command}${asked}`;
+    });
+  if (!cards.length) return undefined;
+  return [
+    "Approval cards from earlier in this conversation are still waiting on this person, who has sent a new message instead of answering them:",
+    ...cards,
+    "Approving one later still runs exactly that call. If the new message replaces one or makes it moot, withdraw it with withdraw_approval when it has a card id and say so; otherwise mention briefly that it is waiting on them.",
+  ].join("\n");
+}
+
 export interface EarlierApprovals {
   decided: Set<string>;
   unstarted: Array<{ call: ApprovedToolCall; approvalKey: string }>;

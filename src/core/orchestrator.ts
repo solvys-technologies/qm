@@ -102,6 +102,7 @@ import {
   grantModesWithin,
   resolveLiveApproval,
   withdrawCallApprovals,
+  pendingCardsNote,
   type ApprovalDecisionTurn,
 } from "./orchestrator/approvals.ts";
 import {
@@ -1372,6 +1373,12 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         const { grantOnce, recordApprovalDecision } = approvalDecisions;
         const approvalOutcome = await applyTurnApprovals(approvalTurn, approvalDecisions);
         if (approvalOutcome) return approvalOutcome;
+        if (!input.approval && isPersonAuthored(input.origin.kind)) {
+          const cardsNote = await pendingCardsNote(pending, session.id, actor.id).catch(
+            swallowAs("orchestrator: pending cards note", undefined),
+          );
+          if (cardsNote) turnEvents.push(cardsNote);
+        }
 
         systemPrompt = await appendTurnGuidance({
           deps,

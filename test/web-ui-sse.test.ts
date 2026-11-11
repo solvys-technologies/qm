@@ -189,7 +189,7 @@ test("active run lookup is cleared after the events stream reaches a terminal fr
   assert.equal(active.run, null);
 });
 
-test("web command approval pause is durable and blocks fresh input for the thread", async () => {
+test("web command approval pause is durable and the requester's next message still runs", async () => {
   const threadRef = `web:alice:${randomUUID()}`;
   const submit = (await (
     await fetch(
@@ -214,14 +214,19 @@ test("web command approval pause is durable and blocks fresh input for the threa
   const requestId = doneData.result?.pendingApprovals?.[0]?.requestId;
   assert.ok(requestId);
 
-  const blocked = await fetch(
+  const next = await fetch(
     `${coreBase}/api/turn`,
     asUser("alice", { method: "POST", body: JSON.stringify({ text: "can you keep going?", threadRef }) }),
   );
-  assert.equal(blocked.status, 200);
-  const blockedBody = (await blocked.json()) as { status?: string; runId?: string };
-  assert.equal(blockedBody.status, "pending_approval");
-  assert.equal(blockedBody.runId, undefined);
+  assert.equal(next.status, 202);
+  const nextBody = (await next.json()) as { status?: string; runId?: string };
+  assert.ok(nextBody.runId, "the requester's own card does not swallow their next message");
+  await (
+    await fetch(
+      `${coreBase}/api/runs/${encodeURIComponent(nextBody.runId)}/events`,
+      asUser("alice", { signal: AbortSignal.timeout(20_000) }),
+    )
+  ).text();
 
   const denied = await fetch(
     `${coreBase}/api/approvals/${encodeURIComponent(requestId)}`,
