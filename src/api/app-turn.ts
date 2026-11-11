@@ -23,7 +23,13 @@ import {
 } from "../wake/route-incoming.ts";
 import type { OrchestratorInput } from "../core/orchestrator.ts";
 import { replayableRequest } from "../core/orchestrator/turn-helpers.ts";
-import { desktopClientForTurn, isPersonAuthored, isSessionTurn, spokenByPerson } from "../core/turn-origin.ts";
+import {
+  desktopClientForTurn,
+  isPersonAuthored,
+  isSessionTurn,
+  spokenByPerson,
+  typedByPerson,
+} from "../core/turn-origin.ts";
 import { isTerminal, leaseLapsed } from "../runs/run-store.ts";
 import type { SessionStateEvent } from "../runs/session-state-bus.ts";
 import { turnRuntimePurpose } from "../core/turn-options.ts";
@@ -356,7 +362,7 @@ export function createTurnMethods(
       const sealedByApproval = async (): Promise<TurnResult | undefined> => {
         const blocked = await pendingApprovalResultForThread(conversation.threadRef, actor.id, {
           alwaysBlock: true,
-          passOwn: origin.kind === "human" && !req.approval && !req.botActor && !sessionTurn,
+          passOwn: typedByPerson({ ...req, origin }),
         });
         if (blocked) {
           const record = req.approval ? await deps.approvals?.get(req.approval.requestId) : undefined;

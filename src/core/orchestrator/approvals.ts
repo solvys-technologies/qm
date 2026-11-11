@@ -1,7 +1,7 @@
 import type { ApprovedToolCall, SteeredApproval } from "../../agent/agent.ts";
 import { samePerson } from "../../directory/person.ts";
 import type { DurableMap } from "../../persistence/durable-map.ts";
-import { isUserItem, type Item } from "../../sessions/items.ts";
+import { isHidden, isUserItem, type Item } from "../../sessions/items.ts";
 import type {
   ApprovalGrantModes,
   CommandApprovalGrant,
@@ -15,7 +15,8 @@ import type {
 import type { AuditEvent } from "../../audit/audit-log.ts";
 import type { SessionWriter } from "../../sessions/session-store.ts";
 import { principalEntitledToScope } from "../../resolution/context-filter.ts";
-import { errMessage, reportFailure } from "../../util/errors.ts";
+import { errMessage, reportFailure, swallowAs } from "../../util/errors.ts";
+import { typedByPerson } from "../turn-origin.ts";
 import { headSlice } from "../../util/text.ts";
 import { approvalGrantId } from "./turn-helpers.ts";
 import type { OrchestratorDeps, OrchestratorInput } from "./types.ts";
@@ -167,24 +168,28 @@ export async function withdrawCallApprovals(
   return { withdrawn };
 }
 
-export async function pendingCardsNote(
-  pending: DurableMap<PendingApprovalRecord>,
-  sessionId: string,
-  actorId: string,
-): Promise<string | undefined> {
-  const rows = await pending.selectEntries({ where: { field: "sessionId", anyOfFold: [sessionId] } });
-  const cards = rows
+async function pendingCardsNote(turn: ApprovalDecisionTurn): Promise<string | undefined> {
+  const { deps, session, actor } = turn;
+  const rows = await deps.approvals.selectEntries({ where: { field: "sessionId", anyOfFold: [session.id] } });
+  const waiting = rows
     .map(([, record]) => record)
-    .filter((record) => !approvalRefusal(record, sessionId, actorId))
+    .filter((record) => record.blocksInput !== false && !approvalRefusal(record, session.id, actor.id));
+  if (!waiting.length) return undefined;
+  const lastSaid =
+    (await deps.sessions.getItems(session.id, { messagesOnly: true }))
+      .filter((item) => isUserItem(item) && !isHidden(item))
+      .at(-1)?.createdAt ?? 0;
+  const cards = waiting
+    .filter((record) => (record.createdAt ?? 0) > lastSaid)
     .map((record) => {
       const id = record.call ? approvalCardId(record.approvalKey ?? "") : "";
-      return `- ${id ? `card ${id}: ` : ""}${record.summary ?? record.command}`;
+      return `- ${id ? `card ${id}: ` : ""}${headSlice(record.summary ?? record.command, 2_000)}`;
     });
   if (!cards.length) return undefined;
   return [
-    "Approval cards from earlier in this conversation are still waiting on this person, who has sent a new message instead of answering them:",
+    "Approval cards from this person's last request are still waiting on them, and they have sent a new message instead of answering:",
     ...cards,
-    "Approving one later still runs exactly that call. If the new message replaces one or makes it moot, withdraw it with withdraw_approval when it has a card id and say so; otherwise, if you have not already, mention briefly that it is waiting on them.",
+    "Approving one later still runs exactly that call. If the new message replaces one or makes it moot, withdraw it with withdraw_approval when it has a card id and say so; otherwise mention briefly that it is waiting on them.",
   ].join("\n");
 }
 
@@ -414,6 +419,10 @@ export async function applyTurnApprovals(
   const recovered = !!input.approval && earlier?.decided.has(input.approval.requestId) === true;
   if (earlier?.unstarted.length || recovered) turnEvents.push(APPROVED_CALL_RAN_NOTE);
   if (input.approval && !recovered) return decideApproval(turn, decisions, input.approval);
+  if (typedByPerson(input)) {
+    const note = await pendingCardsNote(turn).catch(swallowAs("approvals: pending cards note", undefined));
+    if (note) turnEvents.push(note);
+  }
   return undefined;
 }
 

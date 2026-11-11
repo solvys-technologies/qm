@@ -9,6 +9,12 @@ export function spokenByPerson(origin: TurnOrigin): boolean {
   return origin.kind === "human" || (origin.kind === "ambient" && origin.live === true);
 }
 
+export function typedByPerson(
+  input: Pick<TurnRequest, "origin" | "approval" | "botActor" | "sessionSenderId" | "delegatingRunId">,
+): boolean {
+  return input.origin?.kind === "human" && !input.approval && !input.botActor && !isSessionTurn(input);
+}
+
 export function isSessionTurn(input: Pick<TurnRequest, "sessionSenderId" | "delegatingRunId">): boolean {
   return !!input.sessionSenderId || !!input.delegatingRunId;
 }
