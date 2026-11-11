@@ -178,7 +178,7 @@ async function releaseCards(turn: ApprovalDecisionTurn): Promise<string | undefi
   for (const [requestId] of own) audit({ action: "command_approval.release", resource: requestId, status: "ok" });
   const cards = own.map(([, record]) => {
     const id = record.call ? approvalCardId(record.approvalKey ?? "") : "";
-    return `- ${id ? `card ${id}: ` : ""}${headSlice(record.summary ?? record.command, 2_000)}`;
+    return `- ${id ? `card ${id}: ` : ""}${record.summary ?? record.command}`;
   });
   if (!cards.length) return undefined;
   return [

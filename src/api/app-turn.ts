@@ -360,10 +360,11 @@ export function createTurnMethods(
         }
       }
       const releasedApprovals: string[] = [];
-      const sealedByApproval = async (passOwn = false): Promise<TurnResult | undefined> => {
+      const sealedByApproval = async (): Promise<TurnResult | undefined> => {
+        releasedApprovals.length = 0;
         const blocked = await pendingApprovalResultForThread(conversation.threadRef, actor.id, {
           alwaysBlock: true,
-          ...(passOwn && typedByPerson({ ...req, origin }) && !replay ? { passOwn: releasedApprovals } : {}),
+          ...(typedByPerson({ ...req, origin }) && !replay ? { passOwn: releasedApprovals } : {}),
         });
         if (blocked) {
           const record = req.approval ? await deps.approvals?.get(req.approval.requestId) : undefined;
@@ -467,9 +468,9 @@ export function createTurnMethods(
           return { status: "silent", steered: true, stopped };
         }
         if (route.kind === "drop") return { status: "refused", reason: "empty message" };
-        if (live?.run && route.kind !== "turn") {
-          const sealed = await sealedByApproval();
-          if (sealed) return sealed;
+        const sealedLive = live?.run && route.kind !== "turn" ? await sealedByApproval() : undefined;
+        if (sealedLive) return sealedLive;
+        if (live?.run && route.kind !== "turn" && !releasedApprovals.length) {
           const target = live.run;
           const steerTs =
             (origin.kind === "human" ? (origin.messageTs ?? origin.entryTs) : undefined) ??
@@ -502,7 +503,7 @@ export function createTurnMethods(
           };
         }
       }
-      const sealed = await sealedByApproval(true);
+      const sealed = await sealedByApproval();
       if (sealed) return sealed;
       if (spineRouted) {
         request = { ...input, surfaceTools: true };

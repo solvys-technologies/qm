@@ -192,7 +192,7 @@ export function createAppHelpers(deps: AppDeps, app: App) {
       opts.passOwn.push(...approvals.map(({ requestId }) => requestId));
       return null;
     }
-    if (!approvals.length) {
+    if (!approvals.length || opts.passOwn) {
       return {
         status: "pending_approval",
         sessionId: session.id,

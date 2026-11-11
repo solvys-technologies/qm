@@ -691,19 +691,22 @@ export function createTurnHandler(deps: {
         throw err;
       }
     } else if (result.status === "pending_approval") {
-      await settleAck();
-      const note =
-        result.reason ??
-        (result.pendingApprovals?.length ? undefined : "This conversation is waiting on a pending approval.");
-      if (note && inc.unprompted) {
-        console.error(`[slack-plugin] turn.pending_approval ch=${inc.channel} ts=${inc.ts}: ${note}`);
-      } else if (note && ack?.postedAck()) {
-        await postReply(note);
-      } else if (note) {
-        await ephemeralOrSay(note);
+      const pendingApprovals = result.pendingApprovals ?? [];
+      if (!pendingApprovals.length) {
+        await settleAck();
+        const note = result.reason ?? "This conversation is waiting on a pending approval.";
+        if (inc.unprompted) {
+          console.error(`[slack-plugin] turn.pending_approval (no card) ch=${inc.channel} ts=${inc.ts}: ${note}`);
+        } else if (ack?.postedAck()) {
+          await postReply(note);
+        } else {
+          await ephemeralOrSay(note);
+        }
+        await finishTaskAck();
+        return;
       }
+      await settleAck();
       await finishTaskAck();
-      return;
     } else {
       await settleAck();
       const delivery = refusalDelivery(result, inc.unprompted === true);
